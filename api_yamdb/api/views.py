@@ -9,7 +9,10 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from api.serializers import RegisterDataSerializer, TokenSerializer
 
-from reviews.models import User
+from rest_framework import viewsets
+
+from api.serializers import (ReviewSerializer, CommentSerializer)
+from reviews.models import User, Review, Comment
 
 
 @api_view(['POST'])
@@ -44,3 +47,38 @@ def get_token(request):
         return Response({'token': str(token)}, status=status.HTTP_200_OK)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Пользовательский класс разрешений, который проверяет, является ли пользователь автором объекта
+# или модератором. Если это так, разрешается редактирование объекта.
+
+
+class IsAuthorOrModeratorOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        # Если метод запроса безопасен (например, GET), разрешить доступ
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        # Если пользователь автор объекта или модератор, разрешить доступ
+        return obj.user == request.user or request.user.role == User.MODERATOR
+
+
+# Представление для работы с отзывами
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthorOrModeratorOrReadOnly]
+
+    # Переопределение метода создания, чтобы автоматически присваивать пользователя
+    # из текущего запроса как автора отзыва
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+# Представление для работы с комментариями
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all()
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthorOrModeratorOrReadOnly]
+
+    # Подобно предыдущему, автоматическое присваивание пользователя как автора комментария
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

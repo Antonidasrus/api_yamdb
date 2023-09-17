@@ -32,6 +32,12 @@ class Title(models.Model):
         Genre,
         related_name='genres')
 
+    @property
+    def average_rating(self):
+        # Вычисляем средний рейтинг для всех отзывов этого произведения.
+        # Если отзывов нет, возвращаем 0.
+        return self.reviews.aggregate(models.Avg('score'))['score__avg'] or 0
+
 
 class User(AbstractUser):
     ADMIN = 'admin'
@@ -68,11 +74,11 @@ class User(AbstractUser):
     @property
     def is_moderator(self):
         return self.role == self.MODERATOR
-    
+
     @property
     def is_admin(self):
         return self.role == self.ADMIN
-    
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
 
@@ -87,3 +93,47 @@ class User(AbstractUser):
                 name='username_is_not_me'
             )
         ]
+
+
+class Review(models.Model):
+    '''
+    Отзыв на произведение. Отзыв привязан к определённому произведению.
+    Пользователь может оставить только один отзыв на одно произведение.
+    '''
+    title = models.ForeignKey(
+        Title,
+        on_delete=models.CASCADE,
+        related_name='reviews'
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+    text = models.TextField()
+    score = models.PositiveSmallIntegerField(
+        choices=[(i, i) for i in range(1, 11)])
+    pub_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['title', 'user']
+        ordering = ['-pub_date']
+
+
+class Comment(models.Model):
+    '''
+    Комментарий к отзыву. Комментарий привязан к определённому отзыву.
+    '''
+    review = models.ForeignKey(
+        Review,
+        on_delete=models.CASCADE,
+        related_name='comments'
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+    text = models.TextField()
+    pub_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-pub_date']
