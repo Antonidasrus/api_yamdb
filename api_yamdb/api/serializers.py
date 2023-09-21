@@ -1,6 +1,7 @@
-from reviews.models import User, Review, Comment
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
+
+from reviews.models import Category, Comment, Genre, Review, Title, User
 
 
 class RegisterDataSerializer(serializers.ModelSerializer):
@@ -28,6 +29,27 @@ class RegisterDataSerializer(serializers.ModelSerializer):
 class TokenSerializer(serializers.Serializer):
     username = serializers.CharField()
     confirmation_code = serializers.CharField()
+
+
+class CategorySerializer(serializers.ModelSerializer):
+
+    class Meta:
+        fields = ('id', 'name', 'slug')
+        model = Category
+
+
+class GenreSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        fields = ('id', 'name', 'slug')
+        model = Genre
+
+
+class TitleSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        fields = ('id', 'name', 'year', 'description', 'category', 'genre')
+        model = Title
 
 
 class ReviewSerializer(serializers.ModelSerializer):

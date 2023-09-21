@@ -65,7 +65,7 @@ class User(AbstractUser):
         choices=ROLES,
         default=USER,
     )
-    info = models.TextField(
+    bio = models.TextField(
         verbose_name='Информация',
         null=True,
         blank=True,
