@@ -1,5 +1,7 @@
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import (MaxValueValidator,
+                                    MinValueValidator,
+                                    RegexValidator)
 from django.db import models
 
 from reviews.validators import validate_year
@@ -15,15 +17,24 @@ class User(AbstractUser):
         (USER, 'User'),
     ]
 
-    email = models.EmailField(
-        verbose_name='Электронная почта',
-        unique=True,
+    email = models.EmailField(max_length=254)
+#    username = models.CharField(max_length=150)
+    username_validator = RegexValidator(
+        regex=r'^[\w.@+-]+\Z',
+        message=('Username must be Alphanumeric or contain'
+                 'any of the following: ".@+-" ')
     )
     username = models.CharField(
         verbose_name='Имя пользователя',
         max_length=150,
         null=True,
         unique=True,
+        validators=[username_validator],
+    )
+    email = models.EmailField(
+        verbose_name='Электронная почта',
+        unique=True,
+        max_length=254,  # Это значение по умолчанию для EmailField
     )
     role = models.CharField(
         verbose_name='Роль',

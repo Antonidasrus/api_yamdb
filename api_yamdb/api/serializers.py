@@ -28,8 +28,7 @@ class CommentSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        fields = ('id', 'review', 'user', 'text', 'pub_date')
-#        fields = '__all__'
+        fields = ('id', 'review', 'author', 'text', 'pub_date')
         model = Comment
 
 
@@ -72,7 +71,16 @@ class RegisterDataSerializer(serializers.ModelSerializer):
 
     def validate_username(self, value):
         if value.lower() == 'me':
-            raise serializers.ValidationError("Username 'me' is not valid")
+            raise serializers.ValidationError('Username "me" is not valid')
+        if len(value) > 150:
+            raise serializers.ValidationError(
+                'Username must be no longer than 150 characters.')
+        return value
+
+    def validate_email(self, value):
+        if len(value) > 254:
+            raise serializers.ValidationError(
+                'Email must be no longer than 254 characters.')
         return value
 
     class Meta:
