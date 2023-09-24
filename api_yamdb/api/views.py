@@ -1,3 +1,5 @@
+import re
+
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
@@ -48,6 +50,7 @@ class TitleViewSet(viewsets.ModelViewSet):
     permission_classes = (IsAdminOrReadOnly,)
     filter_backends = [DjangoFilterBackend]
     filterset_class = TitlesFilter
+    http_method_names = ['get', 'post', 'head', 'delete', 'patch', 'options']
 
     def get_serializer_class(self):
         if self.action in ('retrieve', 'list'):
@@ -58,11 +61,52 @@ class TitleViewSet(viewsets.ModelViewSet):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def register(request):
+    email = request.data.get('email')
+    username = request.data.get('username')
+
+    # Проверка, существует ли пользователь с таким email
+    user = User.objects.filter(email=email).first()
+
+    if user and user.username != username:
+        return Response(
+            {'detail': 'Email is already in use by another user.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Отправка нового кода подтверждения
+    if user and user.username == username:
+        confirmation_code = default_token_generator.make_token(user)
+        send_mail(
+            subject='YaMDb registration',
+            message=f'Your confirmation code: {confirmation_code}',
+            from_email=None,
+            recipient_list=[user.email],
+        )
+        return Response({'detail': 'Confirmation code sent again.'},
+                        status=status.HTTP_200_OK)
+
+    # Регистрация нового пользователя
     serializer = serializers.RegisterDataSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    serializer.save()
-    user = get_object_or_404(User,
-                             username=serializer.validated_data['username'])
+
+    username = serializer.validated_data.get('username')
+    if not re.match(r'^[\w.@+-]+\Z', username):
+        return Response({'username': ['Invalid username format']},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    if len(username) > 150:
+        return Response({'username': ['Username is too long']},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    user_exists = User.objects.filter(username=username).exists()
+
+    if not user_exists:
+        serializer.save()
+
+    user = get_object_or_404(
+        User,
+        username=serializer.validated_data['username']
+    )
     confirmation_code = default_token_generator.make_token(user)
     send_mail(
         subject='YaMDb registration',
@@ -97,6 +141,9 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.UserSerializer
     pagination_class = PageNumberPagination
     permission_classes = (IsAdmin,)
+    filter_backends = (filters.SearchFilter,)
+    search_fields = ('username',)
+    http_method_names = ['get', 'post', 'head', 'delete', 'patch', 'options']
 
     @action(
         methods=['get', 'patch', ],
@@ -119,6 +166,30 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+    def create(self, request, *args, **kwargs):
+        email = request.data.get('email')
+        username = request.data.get('username')
+
+        if email is None or username is None:
+            return Response(
+                {'error': 'Email and username are required fields.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(email) > 254:
+            return Response({'email': ['Email is too long']},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if len(username) > 150:
+            return Response({'username': ['Username is too long']},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not re.match(r'^[\w.@+-]+\Z', username):
+            return Response({'username': ['Invalid username format']},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        return super().create(request, *args, **kwargs)
+
 
 # Представление для работы с отзывами
 class ReviewViewSet(viewsets.ModelViewSet):
@@ -126,13 +197,18 @@ class ReviewViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminModeratorOwnerOrReadOnly]
 
     def get_queryset(self):
-        title = get_object_or_404(Title, pk=self.kwargs.get("title_id"))
+        title = get_object_or_404(Title, pk=self.kwargs.get('title_id'))
         return title.reviews.all()
 
     def perform_create(self, serializer):
         title_id = self.kwargs.get('title_id')
         title = get_object_or_404(Title, id=title_id)
         serializer.save(author=self.request.user, title=title)
+
+    def update(self, request, *args, **kwargs):
+        if request.method == 'PUT':
+            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return super().update(request, *args, **kwargs)
 
 
 # Представление для работы с комментариями
@@ -149,3 +225,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         review_id = self.kwargs.get('review_id')
         review = get_object_or_404(Review, id=review_id, title=title_id)
         serializer.save(author=self.request.user, review=review)
+
+    def update(self, request, *args, **kwargs):
+        if request.method == 'PUT':
+            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return super().update(request, *args, **kwargs)
