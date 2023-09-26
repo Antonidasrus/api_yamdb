@@ -81,16 +81,6 @@ class RegisterDataSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(msg)
         return value
 
-#    def validate_username(self, value):
-#        if value.lower() == CONST['USERNAME_VALIDATED']:
-#            raise serializers.ValidationError('Username "me" is not valid')
-#        if len(value) > CONST['USERNAME_MAX_LENGTH']:
-#            msg = f'Max username length is {CONST["USERNAME_MAX_LENGTH"]}.'
-#            raise serializers.ValidationError(msg)
-#        if not re.match(r'^[\w.@+-]+\Z', value): # Add this line
-#            raise serializers.ValidationError('Invalid username format')
-#        return value
-
     def validate_email(self, value):
         if len(value) > CONST['EMAIL_MAX_LENGTH']:
             msg = f'Max email length is {CONST["EMAIL_MAX_LENGTH"]}'
