@@ -10,22 +10,30 @@ from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken
 
+from api_yamdb.settings import CONST
 from api import serializers
 from api.filters import TitlesFilter
 from api.mixins import ListCreateDestroyMixin
-from api.permissions import (IsAdmin, IsAdminOrReadOnly,
-                             IsAdminModeratorOwnerOrReadOnly)
+from api.permissions import (IsAuthenticatedAdmin,
+                             IsAuthenticatedAndAdminOrReadOnly,
+                             IsAuthenticatedAdminModeratorOwnerOrReadOnly)
 
 from reviews.models import Category, Genre, Review, Title, User
+
+
+METHODS = ('get', 'post', 'head', 'delete', 'patch', 'options')
+
+PATTERN = re.compile(r'^[\w.@+-]+\Z')
 
 
 # Представление для работы с категориями
 class CategoryViewSet(ListCreateDestroyMixin):
     queryset = Category.objects.all()
     serializer_class = serializers.CategorySerializer
-    permission_classes = (IsAdminOrReadOnly,)
+    permission_classes = (IsAuthenticatedAndAdminOrReadOnly,)
     filter_backends = (filters.SearchFilter,)
     search_fields = ('name',)
     lookup_field = 'slug'
@@ -35,7 +43,7 @@ class CategoryViewSet(ListCreateDestroyMixin):
 class GenreViewSet(ListCreateDestroyMixin):
     queryset = Genre.objects.all()
     serializer_class = serializers.GenreSerializer
-    permission_classes = (IsAdminOrReadOnly,)
+    permission_classes = (IsAuthenticatedAndAdminOrReadOnly,)
     filter_backends = (filters.SearchFilter,)
     search_fields = ('name',)
     lookup_field = 'slug'
@@ -47,15 +55,46 @@ class TitleViewSet(viewsets.ModelViewSet):
         Avg('reviews__score')
     ).order_by('name')
     serializer_class = serializers.TitleSerializer
-    permission_classes = (IsAdminOrReadOnly,)
-    filter_backends = [DjangoFilterBackend]
+    permission_classes = (IsAuthenticatedAndAdminOrReadOnly,)
+    filter_backends = (DjangoFilterBackend,)
     filterset_class = TitlesFilter
-    http_method_names = ['get', 'post', 'head', 'delete', 'patch', 'options']
+    http_method_names = METHODS
 
     def get_serializer_class(self):
         if self.action in ('retrieve', 'list'):
             return serializers.ReadOnlyTitleSerializer
         return serializers.TitleSerializer
+
+
+class RegistrationView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = serializers.RegisterDataSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        username = serializer.validated_data.get("username")
+        if not re.match(r'^[\w.@+-]+\Z', username):
+            return Response({"username": ["Invalid username format"]},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if len(username) > 150:
+            return Response({"username": ["Username is too long"]},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        serializer.save()
+        user = get_object_or_404(
+            User,
+            username=serializer.validated_data['username']
+        )
+        confirmation_code = default_token_generator.make_token(user)
+        send_mail(
+            subject='YaMDb registration',
+            message=f'Your confirmation code: {confirmation_code}',
+            from_email=None,
+            recipient_list=[user.email],
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -79,7 +118,7 @@ def register(request):
         send_mail(
             subject='YaMDb registration',
             message=f'Your confirmation code: {confirmation_code}',
-            from_email=None,
+            from_email=CONST['FROM_EMAIL'],
             recipient_list=[user.email],
         )
         return Response({'detail': 'Confirmation code sent again.'},
@@ -90,12 +129,8 @@ def register(request):
     serializer.is_valid(raise_exception=True)
 
     username = serializer.validated_data.get('username')
-    if not re.match(r'^[\w.@+-]+\Z', username):
+    if not PATTERN.match(username):
         return Response({'username': ['Invalid username format']},
-                        status=status.HTTP_400_BAD_REQUEST)
-
-    if len(username) > 150:
-        return Response({'username': ['Username is too long']},
                         status=status.HTTP_400_BAD_REQUEST)
 
     user_exists = User.objects.filter(username=username).exists()
@@ -111,10 +146,30 @@ def register(request):
     send_mail(
         subject='YaMDb registration',
         message=f'Your confirmation code: {confirmation_code}',
-        from_email=None,
+        from_email=CONST['FROM_EMAIL'],
         recipient_list=[user.email],
     )
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class TokenView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = serializers.TokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = get_object_or_404(
+            User,
+            username=serializer.validated_data['username']
+        )
+
+        if default_token_generator.check_token(
+            user, serializer.validated_data['confirmation_code']
+        ):
+            token = AccessToken.for_user(user)
+            return Response({'token': str(token)}, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
@@ -140,10 +195,10 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = serializers.UserSerializer
     pagination_class = PageNumberPagination
-    permission_classes = (IsAdmin,)
+    permission_classes = (IsAuthenticatedAdmin,)
     filter_backends = (filters.SearchFilter,)
     search_fields = ('username',)
-    http_method_names = ['get', 'post', 'head', 'delete', 'patch', 'options']
+    http_method_names = METHODS
 
     @action(
         methods=['get', 'patch', ],
@@ -176,15 +231,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if len(email) > 254:
-            return Response({'email': ['Email is too long']},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if len(username) > 150:
-            return Response({'username': ['Username is too long']},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if not re.match(r'^[\w.@+-]+\Z', username):
+        if not PATTERN.match(username):
             return Response({'username': ['Invalid username format']},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -194,7 +241,7 @@ class UserViewSet(viewsets.ModelViewSet):
 # Представление для работы с отзывами
 class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.ReviewSerializer
-    permission_classes = [IsAdminModeratorOwnerOrReadOnly]
+    permission_classes = [IsAuthenticatedAdminModeratorOwnerOrReadOnly]
 
     def get_queryset(self):
         title = get_object_or_404(Title, pk=self.kwargs.get('title_id'))
@@ -214,7 +261,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
 # Представление для работы с комментариями
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.CommentSerializer
-    permission_classes = [IsAdminModeratorOwnerOrReadOnly]
+    permission_classes = [IsAuthenticatedAdminModeratorOwnerOrReadOnly]
 
     def get_queryset(self):
         review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))

@@ -1,3 +1,5 @@
+from api_yamdb.settings import CONST
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
@@ -59,28 +61,40 @@ class ReadOnlyTitleSerializer(serializers.ModelSerializer):
 
 class RegisterDataSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
+        max_length=CONST['USERNAME_MAX_LENGTH'],
         validators=[
             UniqueValidator(queryset=User.objects.all())
         ]
     )
     email = serializers.EmailField(
+        max_length=CONST['EMAIL_MAX_LENGTH'],
         validators=[
             UniqueValidator(queryset=User.objects.all())
         ]
     )
 
     def validate_username(self, value):
-        if value.lower() == 'me':
+        if value.lower() == CONST['USERNAME_VALIDATED']:
             raise serializers.ValidationError('Username "me" is not valid')
-        if len(value) > 150:
-            raise serializers.ValidationError(
-                'Username must be no longer than 150 characters.')
+        if len(value) > CONST['USERNAME_MAX_LENGTH']:
+            msg = f'Max username length is {CONST["USERNAME_MAX_LENGTH"]}.'
+            raise serializers.ValidationError(msg)
         return value
 
+#    def validate_username(self, value):
+#        if value.lower() == CONST['USERNAME_VALIDATED']:
+#            raise serializers.ValidationError('Username "me" is not valid')
+#        if len(value) > CONST['USERNAME_MAX_LENGTH']:
+#            msg = f'Max username length is {CONST["USERNAME_MAX_LENGTH"]}.'
+#            raise serializers.ValidationError(msg)
+#        if not re.match(r'^[\w.@+-]+\Z', value): # Add this line
+#            raise serializers.ValidationError('Invalid username format')
+#        return value
+
     def validate_email(self, value):
-        if len(value) > 254:
-            raise serializers.ValidationError(
-                'Email must be no longer than 254 characters.')
+        if len(value) > CONST['EMAIL_MAX_LENGTH']:
+            msg = f'Max email length is {CONST["EMAIL_MAX_LENGTH"]}'
+            raise serializers.ValidationError(msg)
         return value
 
     class Meta:
@@ -122,25 +136,30 @@ class ReviewSerializer(serializers.ModelSerializer):
         author = request.user
         title_id = self.context['view'].kwargs.get('title_id')
         title = get_object_or_404(Title, pk=title_id)
-        if request.method == 'POST':
-            if Review.objects.filter(title=title, author=author).exists():
-                raise ValidationError('Вы не можете добавить более'
-                                      'одного отзыва на произведение')
-        return data
+        if request.method != 'POST':
+            return data
+
+        if not Review.objects.filter(title=title, author=author).exists():
+            return data
+
+        raise ValidationError('Вы не можете добавить более одного'
+                              'отзыва на произведение')
 
     class Meta:
         model = Review
-        fields = '__all__'
+        fields = ('id', 'title', 'text', 'author', 'score', 'pub_date')
 
 
 class UserSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
+        max_length=CONST['USERNAME_MAX_LENGTH'],
         validators=[
             UniqueValidator(queryset=User.objects.all())
         ],
         required=True,
     )
     email = serializers.EmailField(
+        max_length=CONST['EMAIL_MAX_LENGTH'],
         validators=[
             UniqueValidator(queryset=User.objects.all())
         ]

@@ -1,11 +1,39 @@
 from django.contrib import admin
 
-from reviews import models
+from reviews.models import (Category, Comment, Genre,
+                            GenreTitle, Review, Title, User)
 
-admin.site.register(models.Category)
-admin.site.register(models.Comment)
-admin.site.register(models.Genre)
-admin.site.register(models.GenreTitle)
-admin.site.register(models.Review)
-admin.site.register(models.Title)
-admin.site.register(models.User)
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(Genre)
+class GenreAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(GenreTitle)
+class GenreTitleAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(Title)
+class TitleAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    pass

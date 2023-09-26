@@ -1,14 +1,13 @@
 import os
+import environ
 
 from datetime import timedelta
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'p&l%385148kslhtyn^##a1)ilz@4zqj=rq&agdol^##zgl9(vs'
+env = environ.Env(DEBUG=(bool, False))
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+SECRET_KEY = env.str('SECRET_KEY', 'secret')
 
 ALLOWED_HOSTS = ['*']
 
@@ -26,6 +25,7 @@ INSTALLED_APPS = [
     'django_filters',
     'reviews.apps.ReviewsConfig',
     'api.apps.ApiConfig',
+    'users.apps.UsersConfig',
 ]
 
 MIDDLEWARE = [
@@ -107,7 +107,7 @@ STATIC_URL = '/static/'
 
 STATICFILES_DIRS = (os.path.join(BASE_DIR, 'static/'),)
 
-AUTH_USER_MODEL = 'reviews.User'
+AUTH_USER_MODEL = 'users.User'
 
 EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
 
@@ -133,3 +133,11 @@ SIMPLE_JWT = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CONSTANTS
+CONST = {
+    'USERNAME_VALIDATED': 'me',
+    'USERNAME_MAX_LENGTH': 150,
+    'EMAIL_MAX_LENGTH': 254,
+    'FROM_EMAIL': env.str('FROM_EMAIL', 'from_email'),
+}
