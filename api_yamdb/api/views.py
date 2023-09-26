@@ -7,7 +7,7 @@ from django.db.models import Avg
 from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework import filters, permissions, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,7 +26,8 @@ from reviews.models import Category, Genre, Review, Title, User
 
 METHODS = ('get', 'post', 'head', 'delete', 'patch', 'options')
 
-PATTERN = re.compile(r'^[\w.@+-]+\Z')
+PATTERN_USERNAME = re.compile(r'^[\w.@+-]+\Z')
+PATTERN_EMAIL = re.compile('^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+.[a-zA-Z0-9-.]+$')
 
 
 # Представление для работы с категориями
@@ -70,86 +71,50 @@ class RegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        email = request.data.get('email')
+        username = request.data.get('username')
+        errors = {}
+
+        if not username or not PATTERN_USERNAME.match(username):
+            errors['username'] = ['Invalid username format']
+
+        if not email or not PATTERN_EMAIL.match(email):
+            errors['email'] = ['Invalid email format']
+        if errors:
+            return Response(errors,
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+
+        if user and user.username != username:
+            return Response(
+                {'detail': 'Email is already in use by another user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user and user.username == username:
+            confirmation_code = default_token_generator.make_token(user)
+            self.send_confirmation_email(user, confirmation_code)
+            return Response({'detail': 'Confirmation code sent again.'},
+                            status=status.HTTP_200_OK)
+
         serializer = serializers.RegisterDataSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        username = serializer.validated_data.get("username")
-        if not re.match(r'^[\w.@+-]+\Z', username):
-            return Response({"username": ["Invalid username format"]},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if len(username) > 150:
-            return Response({"username": ["Username is too long"]},
-                            status=status.HTTP_400_BAD_REQUEST)
-
         serializer.save()
+
         user = get_object_or_404(
-            User,
-            username=serializer.validated_data['username']
-        )
+            User, username=serializer.validated_data['username'])
         confirmation_code = default_token_generator.make_token(user)
-        send_mail(
-            subject='YaMDb registration',
-            message=f'Your confirmation code: {confirmation_code}',
-            from_email=None,
-            recipient_list=[user.email],
-        )
+        self.send_confirmation_email(user, confirmation_code)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-@api_view(['POST'])
-@permission_classes([permissions.AllowAny])
-def register(request):
-    email = request.data.get('email')
-    username = request.data.get('username')
-
-    # Проверка, существует ли пользователь с таким email
-    user = User.objects.filter(email=email).first()
-
-    if user and user.username != username:
-        return Response(
-            {'detail': 'Email is already in use by another user.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Отправка нового кода подтверждения
-    if user and user.username == username:
-        confirmation_code = default_token_generator.make_token(user)
+    def send_confirmation_email(self, user, confirmation_code):
         send_mail(
             subject='YaMDb registration',
             message=f'Your confirmation code: {confirmation_code}',
             from_email=CONST['FROM_EMAIL'],
             recipient_list=[user.email],
         )
-        return Response({'detail': 'Confirmation code sent again.'},
-                        status=status.HTTP_200_OK)
-
-    # Регистрация нового пользователя
-    serializer = serializers.RegisterDataSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    username = serializer.validated_data.get('username')
-    if not PATTERN.match(username):
-        return Response({'username': ['Invalid username format']},
-                        status=status.HTTP_400_BAD_REQUEST)
-
-    user_exists = User.objects.filter(username=username).exists()
-
-    if not user_exists:
-        serializer.save()
-
-    user = get_object_or_404(
-        User,
-        username=serializer.validated_data['username']
-    )
-    confirmation_code = default_token_generator.make_token(user)
-    send_mail(
-        subject='YaMDb registration',
-        message=f'Your confirmation code: {confirmation_code}',
-        from_email=CONST['FROM_EMAIL'],
-        recipient_list=[user.email],
-    )
-    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class TokenView(APIView):
@@ -170,23 +135,6 @@ class TokenView(APIView):
             return Response({'token': str(token)}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([permissions.AllowAny])
-def get_token(request):
-    serializer = serializers.TokenSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    user = get_object_or_404(User,
-                             username=serializer.validated_data['username'])
-
-    if default_token_generator.check_token(
-        user, serializer.validated_data['confirmation_code']
-    ):
-        token = AccessToken.for_user(user)
-        return Response({'token': str(token)}, status=status.HTTP_200_OK)
-
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # Представление для работы с пользователями
@@ -231,7 +179,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not PATTERN.match(username):
+        if not PATTERN_USERNAME.match(username):
             return Response({'username': ['Invalid username format']},
                             status=status.HTTP_400_BAD_REQUEST)
 
