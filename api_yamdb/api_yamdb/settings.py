@@ -1,6 +1,7 @@
 import os
 import environ
 
+from dataclasses import dataclass
 from datetime import timedelta
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -134,10 +135,11 @@ SIMPLE_JWT = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+
 # CONSTANTS
-CONST = {
-    'USERNAME_VALIDATED': 'me',
-    'USERNAME_MAX_LENGTH': 150,
-    'EMAIL_MAX_LENGTH': 254,
-    'FROM_EMAIL': env.str('FROM_EMAIL', 'from_email'),
-}
+@dataclass
+class Const:
+    USERNAME_VALIDATED: str = 'me'
+    USERNAME_MAX_LENGTH: int = 150
+    EMAIL_MAX_LENGTH: int = 254
+    FROM_EMAIL: str = env.str('FROM_EMAIL', 'from_email')

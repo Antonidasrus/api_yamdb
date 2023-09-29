@@ -1,11 +1,17 @@
-from api_yamdb.settings import CONST
+import re
 
+from api_yamdb.settings import Const
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.validators import UniqueValidator
 
 from reviews.models import Category, Comment, Genre, Review, Title, User
+from users.validators import validate_username, validate_email
+
+PATTERN_USERNAME = re.compile(r'^[\w.@+-]+\Z')
+PATTERN_EMAIL = re.compile('^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+.[a-zA-Z0-9-.]+$')
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -61,29 +67,35 @@ class ReadOnlyTitleSerializer(serializers.ModelSerializer):
 
 class RegisterDataSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
-        max_length=CONST['USERNAME_MAX_LENGTH'],
+        max_length=Const.USERNAME_MAX_LENGTH,
         validators=[
-            UniqueValidator(queryset=User.objects.all())
+            RegexValidator(PATTERN_USERNAME, 'Invalid username format.')
         ]
     )
     email = serializers.EmailField(
-        max_length=CONST['EMAIL_MAX_LENGTH'],
+        max_length=Const.EMAIL_MAX_LENGTH,
         validators=[
-            UniqueValidator(queryset=User.objects.all())
+            RegexValidator(PATTERN_EMAIL, 'Invalid email format.')
         ]
     )
 
     def validate_username(self, value):
-        if value.lower() == CONST['USERNAME_VALIDATED']:
+        # Using the custom validator
+        value = validate_username(value)
+
+        if value.lower() == Const.USERNAME_VALIDATED:
             raise serializers.ValidationError('Username "me" is not valid')
-        if len(value) > CONST['USERNAME_MAX_LENGTH']:
-            msg = f'Max username length is {CONST["USERNAME_MAX_LENGTH"]}.'
+        if len(value) > Const.USERNAME_MAX_LENGTH:
+            msg = f'Max username length is {Const.USERNAME_MAX_LENGTH}.'
             raise serializers.ValidationError(msg)
         return value
 
     def validate_email(self, value):
-        if len(value) > CONST['EMAIL_MAX_LENGTH']:
-            msg = f'Max email length is {CONST["EMAIL_MAX_LENGTH"]}'
+        # Using the custom validator
+        value = validate_email(value)
+
+        if len(value) > Const.EMAIL_MAX_LENGTH:
+            msg = f'Max email length is {Const.EMAIL_MAX_LENGTH}'
             raise serializers.ValidationError(msg)
         return value
 
@@ -142,16 +154,18 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
-        max_length=CONST['USERNAME_MAX_LENGTH'],
+        max_length=Const.USERNAME_MAX_LENGTH,
         validators=[
-            UniqueValidator(queryset=User.objects.all())
+            UniqueValidator(queryset=User.objects.all()),
+            RegexValidator(PATTERN_USERNAME, 'Invalid username format.')
         ],
         required=True,
     )
     email = serializers.EmailField(
-        max_length=CONST['EMAIL_MAX_LENGTH'],
+        max_length=Const.EMAIL_MAX_LENGTH,
         validators=[
-            UniqueValidator(queryset=User.objects.all())
+            UniqueValidator(queryset=User.objects.all()),
+            RegexValidator(PATTERN_EMAIL, 'Invalid email format.')
         ]
     )
 

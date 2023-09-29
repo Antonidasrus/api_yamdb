@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken
 
-from api_yamdb.settings import CONST
+from api_yamdb.settings import Const
 from api import serializers
 from api.filters import TitlesFilter
 from api.mixins import ListCreateDestroyMixin
@@ -71,48 +71,44 @@ class RegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        email = request.data.get('email')
-        username = request.data.get('username')
-        errors = {}
+        serializer = serializers.RegisterDataSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+        username = serializer.validated_data['username']
+        user_by_email = User.objects.filter(email=email).first()
+        user_by_username = User.objects.filter(username=username).first()
 
-        if not username or not PATTERN_USERNAME.match(username):
-            errors['username'] = ['Invalid username format']
+        if user_by_username and user_by_username.email != email:
+            return Response(
+                {'detail': 'Username is already in use by another email.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if not email or not PATTERN_EMAIL.match(email):
-            errors['email'] = ['Invalid email format']
-        if errors:
-            return Response(errors,
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        user = User.objects.filter(email=email).first()
-
-        if user and user.username != username:
+        if user_by_email and user_by_email.username != username:
             return Response(
                 {'detail': 'Email is already in use by another user.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if user and user.username == username:
-            confirmation_code = default_token_generator.make_token(user)
-            self.send_confirmation_email(user, confirmation_code)
+        elif user_by_email and user_by_email.username == username:
+            confirmation_code = default_token_generator.make_token(
+                user_by_email)
+            self.send_confirmation_email(user_by_email, confirmation_code)
             return Response({'detail': 'Confirmation code sent again.'},
                             status=status.HTTP_200_OK)
 
-        serializer = serializers.RegisterDataSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = User.objects.create(email=email, username=username)
 
-        user = get_object_or_404(
-            User, username=serializer.validated_data['username'])
         confirmation_code = default_token_generator.make_token(user)
         self.send_confirmation_email(user, confirmation_code)
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def send_confirmation_email(self, user, confirmation_code):
         send_mail(
             subject='YaMDb registration',
             message=f'Your confirmation code: {confirmation_code}',
-            from_email=CONST['FROM_EMAIL'],
+            from_email=Const.FROM_EMAIL,
             recipient_list=[user.email],
         )
 
@@ -137,7 +133,6 @@ class TokenView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# Представление для работы с пользователями
 class UserViewSet(viewsets.ModelViewSet):
     lookup_field = 'username'
     queryset = User.objects.all()
@@ -157,32 +152,20 @@ class UserViewSet(viewsets.ModelViewSet):
     )
     def users_own_profile(self, request):
         user = request.user
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
         if request.method == 'GET':
-            serializer = self.get_serializer(user)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        if request.method == 'PATCH':
-            serializer = self.get_serializer(user,
-                                             data=request.data,
-                                             partial=True)
-            serializer.is_valid(raise_exception=True)
+        elif request.method == 'PATCH':
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def create(self, request, *args, **kwargs):
-        email = request.data.get('email')
-        username = request.data.get('username')
-
-        if email is None or username is None:
-            return Response(
-                {'error': 'Email and username are required fields.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not PATTERN_USERNAME.match(username):
-            return Response({'username': ['Invalid username format']},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         return super().create(request, *args, **kwargs)
 
 
